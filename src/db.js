@@ -168,6 +168,32 @@ export async function deleteRequestsOlderThan(days) {
   return result.rowCount ?? result.affectedRows ?? 0;
 }
 
+// Scoped by project_id too, so a request can only be deleted through the project that owns it.
+export async function deleteRequest(projectId, id) {
+  const result = await query(`DELETE FROM requests WHERE project_id = $1 AND id = $2`, [
+    projectId,
+    id,
+  ]);
+  return (result.rowCount ?? result.affectedRows ?? 0) > 0;
+}
+
+// Rename changes the display name only — the slug is part of the webhook URL and stays fixed so
+// existing senders don't break. Same validation as creation.
+export async function renameProject(id, name) {
+  const trimmed = String(name ?? '').trim();
+  if (!trimmed) throw new ProjectError('Project name is required.');
+  const { rows } = await query(
+    `UPDATE projects SET name = $2 WHERE id = $1 RETURNING id, name, slug`,
+    [id, trimmed],
+  );
+  return rows[0] ?? null;
+}
+
+// Requests cascade via the ON DELETE CASCADE foreign key, so this clears the project's data too.
+export async function deleteProject(id) {
+  await query(`DELETE FROM projects WHERE id = $1`, [id]);
+}
+
 // Detail view (step 4). Scoped by project_id as well as id so a request can only be
 // reached through the project that owns it — no cross-project id guessing.
 export async function getRequest(projectId, id) {

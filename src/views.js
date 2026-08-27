@@ -155,12 +155,26 @@ function layout(title, body) {
     outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
 
   .section-head { display: flex; align-items: center; gap: .75rem; margin: 1.75rem 0 .5rem; }
-  .copy { font: inherit; font-size: .7rem; font-weight: 500; line-height: 1; padding: .3rem .55rem;
+  .copy, .del { font: inherit; font-size: .7rem; font-weight: 500; line-height: 1; padding: .3rem .55rem;
           border-radius: 6px; cursor: pointer; user-select: none; color: var(--muted);
           background: var(--surface); border: 1px solid var(--border-strong); }
   .copy:hover { color: var(--text); background: var(--surface-2); }
   .copy.copied { border-color: #22c55e; color: #16a34a; background: color-mix(in srgb, #22c55e 12%, transparent); }
-  .req-copy { margin-left: auto; }
+  .del:hover { color: #dc2626; border-color: color-mix(in srgb, #ef4444 55%, var(--border-strong));
+               background: color-mix(in srgb, #ef4444 8%, transparent); }
+  @media (prefers-color-scheme: dark) { .del:hover { color: #fca5a5; } }
+  .row-actions { margin-left: auto; display: inline-flex; gap: .4rem; }
+  .danger { color: #dc2626; border-color: color-mix(in srgb, #ef4444 45%, var(--border-strong)); }
+  .danger:hover { background: color-mix(in srgb, #ef4444 12%, transparent); border-color: #ef4444; }
+  @media (prefers-color-scheme: dark) { .danger { color: #fca5a5; } }
+  .settings { margin: 0 0 1.25rem; }
+  .settings > summary { display: inline-flex; font-size: .8125rem; color: var(--muted); }
+  .settings-body { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center;
+                   margin-top: .75rem; padding: 1rem; background: var(--surface);
+                   border: 1px solid var(--border); border-radius: var(--radius); }
+  .settings-body .rename { display: flex; gap: .5rem; flex: 1; min-width: 16rem; }
+  .settings-body .rename input { flex: 1; }
+  .head-actions { display: flex; gap: .5rem; }
 
   .search { display: flex; gap: .5rem; align-items: center; margin: 0 0 1rem; }
   .search input { flex: 1; }
@@ -217,6 +231,17 @@ document.addEventListener('click', function (e) {
     setTimeout(function () { btn.textContent = label; btn.classList.remove('copied'); }, 1200);
   }).catch(function () {});
 });
+// Inline delete for a feed row: confirm, POST to the row's own URL + /delete, drop the card.
+document.addEventListener('click', function (e) {
+  var del = e.target.closest('.del');
+  if (!del) return;
+  e.preventDefault();
+  var card = del.closest('.req');
+  if (!card || !window.confirm('Delete this request? This cannot be undone.')) return;
+  fetch(card.getAttribute('href') + '/delete', {
+    method: 'POST', headers: { Accept: 'application/json' },
+  }).then(function (res) { if (res.ok) card.remove(); });
+});
 </script>
 </body>
 </html>`;
@@ -269,17 +294,18 @@ ${list}
 // One feed row. Shared by the server-rendered feed and the JSON poll endpoint so live-inserted
 // rows are byte-identical to rendered ones. data-id is the cursor the poller advances past.
 export function feedItem(project, r) {
-  // A span, not a button: a <button> nested in the row's <a> is invalid and some parsers
-  // relocate it. role/tabindex keep it operable; the delegated handler does the copy.
+  // Spans, not buttons: a <button> nested in the row's <a> is invalid and some parsers
+  // relocate it. role/tabindex keep them operable; the delegated handler does the work.
   const copy = r.body_raw
-    ? '<span class="copy req-copy" role="button" tabindex="0">Copy</span>'
+    ? '<span class="copy" role="button" tabindex="0">Copy</span>'
     : '';
+  const del = '<span class="del" role="button" tabindex="0">Delete</span>';
   return `<a class="req" data-id="${r.id}" href="/projects/${encodeURIComponent(project.slug)}/requests/${r.id}">
   <div class="meta">
     ${methodBadge(r.method)}
     <span class="time">${escapeHtml(new Date(r.received_at).toISOString())}</span>
     <span class="ip">from ${escapeHtml(r.source_ip)}</span>
-    ${copy}
+    <span class="row-actions">${copy}${del}</span>
   </div>
   ${preview(r.body_raw)}
 </a>`;
@@ -348,6 +374,19 @@ ${requests.length ? '' : emptyState}
   <form method="post" action="/logout"><button type="submit">Log out</button></form>
 </div>
 <p class="sub">Send anything to <code>${escapeHtml(hookUrl)}</code> — any method, any body.</p>
+<details class="settings">
+  <summary>Project settings</summary>
+  <div class="settings-body">
+    <form class="rename" method="post" action="/projects/${encodeURIComponent(project.slug)}/rename">
+      <input name="name" value="${escapeHtml(project.name)}" maxlength="120" autocomplete="off" required aria-label="Project name">
+      <button type="submit">Rename</button>
+    </form>
+    <form method="post" action="/projects/${encodeURIComponent(project.slug)}/delete"
+          onsubmit="return confirm('Delete this project and all its requests? This cannot be undone.')">
+      <button type="submit" class="danger">Delete project</button>
+    </form>
+  </div>
+</details>
 ${search}
 ${feedBlock}
 ${pollScript}`,
@@ -388,7 +427,13 @@ export function requestPage({ project, request }) {
     <p class="back"><a href="/projects/${encodeURIComponent(project.slug)}">← ${escapeHtml(project.name)}</a></p>
     <h1>${methodBadge(request.method)} request</h1>
   </div>
-  <form method="post" action="/logout"><button type="submit">Log out</button></form>
+  <div class="head-actions">
+    <form method="post" action="/projects/${encodeURIComponent(project.slug)}/requests/${request.id}/delete"
+          onsubmit="return confirm('Delete this request? This cannot be undone.')">
+      <button type="submit" class="danger">Delete</button>
+    </form>
+    <form method="post" action="/logout"><button type="submit">Log out</button></form>
+  </div>
 </div>
 <p class="sub">
   ${escapeHtml(new Date(request.received_at).toISOString())}

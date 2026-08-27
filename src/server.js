@@ -2,12 +2,15 @@ import express from 'express';
 import {
   ProjectError,
   createProject,
+  deleteProject,
+  deleteRequest,
   findProjectBySlug,
   getRequest,
   insertRequest,
   listProjects,
   listRequests,
   migrate,
+  renameProject,
   requestsSince,
   searchRequests,
 } from './db.js';
@@ -147,6 +150,61 @@ app.get('/projects/:slug', async (req, res, next) => {
         hookUrl: `${req.protocol}://${req.get('host')}/hooks/${project.slug}`,
       }),
     );
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post('/projects/:slug/rename', async (req, res, next) => {
+  try {
+    const project = await findProjectBySlug(req.params.slug);
+    if (!project) {
+      res.status(404).send(notFoundPage(`No project with slug "${req.params.slug}".`));
+      return;
+    }
+    await renameProject(project.id, req.body?.name); // slug is untouched, so the URL stays valid
+    res.redirect(`/projects/${encodeURIComponent(project.slug)}`);
+  } catch (err) {
+    if (err instanceof ProjectError) {
+      res.status(400).send(notFoundPage(err.message));
+      return;
+    }
+    next(err);
+  }
+});
+
+app.post('/projects/:slug/delete', async (req, res, next) => {
+  try {
+    const project = await findProjectBySlug(req.params.slug);
+    if (!project) {
+      res.status(404).send(notFoundPage(`No project with slug "${req.params.slug}".`));
+      return;
+    }
+    await deleteProject(project.id); // cascades to its requests
+    res.redirect('/projects');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Deleting a request answers either JSON (feed's inline delete, via fetch) or a redirect back to
+// the feed (detail page's form), depending on what the caller accepts.
+app.post('/projects/:slug/requests/:id/delete', async (req, res, next) => {
+  try {
+    const project = await findProjectBySlug(req.params.slug);
+    const id = Number(req.params.id);
+    const removed =
+      project && Number.isInteger(id) ? await deleteRequest(project.id, id) : false;
+
+    if ((req.get('accept') ?? '').includes('application/json')) {
+      res.status(removed ? 204 : 404).end();
+      return;
+    }
+    if (!project) {
+      res.status(404).send(notFoundPage(`No project with slug "${req.params.slug}".`));
+      return;
+    }
+    res.redirect(`/projects/${encodeURIComponent(project.slug)}`);
   } catch (err) {
     next(err);
   }
