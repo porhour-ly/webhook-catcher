@@ -44,6 +44,21 @@ function layout(title, body) {
            border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
            background: transparent; color: inherit; }
   button:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
+  .back { margin: 0 0 .25rem; font-size: .8125rem; }
+  .back a { color: inherit; opacity: .65; text-decoration: none; }
+  .back a:hover { opacity: 1; text-decoration: underline; }
+  .create { display: flex; gap: .5rem; margin: 0 0 1rem; }
+  .create input { flex: 1; font: inherit; padding: .5rem .625rem; border-radius: 6px;
+                  background: transparent; color: inherit;
+                  border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
+  .projects { display: flex; flex-direction: column; }
+  a.project { display: flex; flex-wrap: wrap; gap: .375rem 1rem; align-items: baseline;
+              padding: .875rem .25rem; text-decoration: none; color: inherit;
+              border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+  a.project:hover { background: color-mix(in srgb, currentColor 6%, transparent); }
+  .project-name { font-weight: 600; }
+  .project-slug { opacity: .8; }
+  .project-stat { margin-left: auto; opacity: .6; font-size: .8125rem; }
   .login { max-width: 20rem; margin: 4rem auto; }
   .login label { display: block; font-size: .875rem; margin-bottom: .375rem; }
   .login input { width: 100%; box-sizing: border-box; font: inherit; padding: .5rem .625rem;
@@ -58,6 +73,50 @@ function layout(title, body) {
 ${body}
 </body>
 </html>`;
+}
+
+function relativeTime(value) {
+  if (!value) return 'never';
+  const then = new Date(value).getTime();
+  const diff = Date.now() - then;
+  if (diff < 60_000) return 'just now';
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+export function projectsPage({ projects, error = null } = {}) {
+  const list = projects.length
+    ? projects
+        .map(
+          (p) => `<a class="project" href="/projects/${encodeURIComponent(p.slug)}">
+  <span class="project-name">${escapeHtml(p.name)}</span>
+  <code class="project-slug">/hooks/${escapeHtml(p.slug)}</code>
+  <span class="project-stat">${p.request_count} request${p.request_count === 1 ? '' : 's'} · ${escapeHtml(relativeTime(p.last_received_at))}</span>
+</a>`,
+        )
+        .join('\n')
+    : `<p class="none">No projects yet. Create one to get a webhook URL.</p>`;
+
+  return layout(
+    'Projects — Webhook Catcher',
+    `<div class="head">
+  <h1>Projects</h1>
+  <form method="post" action="/logout"><button type="submit">Log out</button></form>
+</div>
+<p class="sub">Each project gets its own webhook URL. Requests sent to it show up in its feed.</p>
+<form class="create" method="post" action="/projects">
+  <input name="name" type="text" placeholder="New project name" maxlength="120" autocomplete="off" required>
+  <button type="submit">Create</button>
+</form>
+${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
+<div class="projects">
+${list}
+</div>`,
+  );
 }
 
 export function projectPage({ project, requests, hookUrl }) {
@@ -79,7 +138,10 @@ export function projectPage({ project, requests, hookUrl }) {
   return layout(
     `${project.name} — Webhook Catcher`,
     `<div class="head">
-  <h1>${escapeHtml(project.name)}</h1>
+  <div>
+    <p class="back"><a href="/projects">← Projects</a></p>
+    <h1>${escapeHtml(project.name)}</h1>
+  </div>
   <form method="post" action="/logout"><button type="submit">Log out</button></form>
 </div>
 <p class="sub">Send anything to <code>${escapeHtml(hookUrl)}</code> — any method, any body.</p>

@@ -1,13 +1,15 @@
 import express from 'express';
 import {
-  DEFAULT_PROJECT,
+  ProjectError,
+  createProject,
   findProjectBySlug,
   insertRequest,
+  listProjects,
   listRequests,
   migrate,
 } from './db.js';
 import { attachAuthRoutes, readPassword, requireAuth } from './auth.js';
-import { loginPage, notFoundPage, projectPage } from './views.js';
+import { loginPage, notFoundPage, projectPage, projectsPage } from './views.js';
 
 const PORT = process.env.PORT || 3000;
 const MAX_BODY = '5mb';
@@ -90,7 +92,29 @@ app.use(requireAuth(PASSWORD));
 
 // --- View --------------------------------------------------------------------
 
-app.get('/', (_req, res) => res.redirect(`/projects/${DEFAULT_PROJECT.slug}`));
+app.get('/', (_req, res) => res.redirect('/projects'));
+
+app.get('/projects', async (_req, res, next) => {
+  try {
+    res.send(projectsPage({ projects: await listProjects() }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post('/projects', async (req, res, next) => {
+  try {
+    const project = await createProject(req.body?.name);
+    res.redirect(`/projects/${encodeURIComponent(project.slug)}`);
+  } catch (err) {
+    if (err instanceof ProjectError) {
+      // Bad input, not a server fault: re-render the list with the message inline.
+      res.status(400).send(projectsPage({ projects: await listProjects(), error: err.message }));
+      return;
+    }
+    next(err);
+  }
+});
 
 app.get('/projects/:slug', async (req, res, next) => {
   try {

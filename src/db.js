@@ -3,7 +3,14 @@
 //   - DATABASE_URL unset -> PGlite, embedded Postgres in .pgdata/ (local dev, no install)
 // Both speak the same SQL and $1 placeholders, so nothing above this file cares which is live.
 
+import crypto from 'node:crypto';
+
 const DATABASE_URL = process.env.DATABASE_URL;
+
+// A create-project form is untrusted input, so surface the "this is your fault, not ours"
+// cases (blank name, no unique slug) as a distinct type the route can show back to the user
+// rather than turning into a 500.
+export class ProjectError extends Error {}
 
 // The one project step 1 uses. Multi-project + slug generation is step 3.
 export const DEFAULT_PROJECT = { name: 'Default', slug: 'default' };
@@ -70,6 +77,68 @@ export async function migrate() {
 export async function findProjectBySlug(slug) {
   const { rows } = await query(`SELECT id, name, slug FROM projects WHERE slug = $1`, [slug]);
   return rows[0] ?? null;
+}
+
+// Projects index: newest first so a just-created project lands at the top, with the request
+// count and latest activity the list needs so it doesn't have to N+1 per project.
+export async function listProjects() {
+  const { rows } = await query(`
+    SELECT p.id, p.name, p.slug, p.created_at,
+           count(r.id)::int      AS request_count,
+           max(r.received_at)    AS last_received_at
+      FROM projects p
+      LEFT JOIN requests r ON r.project_id = p.id
+     GROUP BY p.id
+     ORDER BY p.created_at DESC, p.id DESC
+  `);
+  return rows;
+}
+
+// Slugs live in webhook URLs, so keep them URL-safe and lowercase. This is intentionally
+// lossy (accents/punctuation collapse to hyphens) — the name keeps the human-readable form.
+export function slugify(name) {
+  return String(name ?? '')
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '') // strip combining marks left by NFKD
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+    .replace(/-+$/g, ''); // slice(60) may have left a trailing hyphen
+}
+
+async function tryInsertProject(name, slug) {
+  const { rows } = await query(
+    `INSERT INTO projects (name, slug) VALUES ($1, $2)
+     ON CONFLICT (slug) DO NOTHING
+     RETURNING id, name, slug`,
+    [name, slug],
+  );
+  return rows[0] ?? null;
+}
+
+export async function createProject(name) {
+  const trimmed = String(name ?? '').trim();
+  if (!trimmed) throw new ProjectError('Project name is required.');
+
+  const base = slugify(trimmed) || 'project'; // e.g. a name that's all punctuation
+
+  // Try the clean slug first, then base-2, base-3… so collisions read predictably.
+  for (let n = 1; n <= 5; n++) {
+    const slug = n === 1 ? base : `${base}-${n}`;
+    const created = await tryInsertProject(trimmed, slug);
+    if (created) return created;
+  }
+
+  // Still colliding after a handful of tries — fall back to a random suffix so a burst of
+  // same-named projects can't wedge creation.
+  for (let n = 0; n < 5; n++) {
+    const slug = `${base}-${crypto.randomBytes(3).toString('hex')}`;
+    const created = await tryInsertProject(trimmed, slug);
+    if (created) return created;
+  }
+
+  throw new ProjectError('Could not generate a unique URL for that name. Try a different one.');
 }
 
 export async function insertRequest(r) {
