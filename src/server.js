@@ -8,11 +8,19 @@ import {
   listProjects,
   listRequests,
   migrate,
+  requestsSince,
   searchRequests,
 } from './db.js';
 import { attachAuthRoutes, readPassword, requireAuth } from './auth.js';
 import { startRetention } from './retention.js';
-import { loginPage, notFoundPage, projectPage, projectsPage, requestPage } from './views.js';
+import {
+  feedItem,
+  loginPage,
+  notFoundPage,
+  projectPage,
+  projectsPage,
+  requestPage,
+} from './views.js';
 
 const PORT = process.env.PORT || 3000;
 const MAX_BODY = '5mb';
@@ -139,6 +147,29 @@ app.get('/projects/:slug', async (req, res, next) => {
         hookUrl: `${req.protocol}://${req.get('host')}/hooks/${project.slug}`,
       }),
     );
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Live-feed poll target (step 7): JSON, not a page. Returns pre-rendered rows newer than the
+// client's cursor plus the new high-water id, so the browser just prepends and advances.
+app.get('/projects/:slug/feed', async (req, res, next) => {
+  try {
+    const project = await findProjectBySlug(req.params.slug);
+    if (!project) {
+      res.status(404).json({ error: 'unknown project' });
+      return;
+    }
+
+    const since = Number(req.query.since);
+    const sinceId = Number.isInteger(since) && since >= 0 ? since : 0;
+    const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+
+    const rows = await requestsSince(project.id, sinceId, q || null);
+    const html = rows.map((r) => feedItem(project, r)).join('\n');
+    const lastId = rows.reduce((max, r) => Math.max(max, r.id), sinceId);
+    res.json({ html, lastId });
   } catch (err) {
     next(err);
   }

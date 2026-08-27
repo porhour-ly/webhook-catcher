@@ -192,13 +192,15 @@ export async function listRequests(projectId, limit = 100) {
   return rows;
 }
 
+// The term is literal text, so neutralise LIKE's own wildcards (% _ \) before wrapping it.
+function bodyLike(term) {
+  return `%${String(term).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
 // Freeform search (step 5): match the term anywhere in the raw body or the JSONB cast to
 // text — no predefined fields, per the brief. body_json::text lets a value be found even
 // when a JSON payload arrived minified with no whitespace in body_raw.
 export async function searchRequests(projectId, term, limit = 100) {
-  // The term is literal text, so neutralise LIKE's own wildcards (% _ \) before wrapping it.
-  const escaped = String(term).replace(/[\\%_]/g, (c) => `\\${c}`);
-  const like = `%${escaped}%`;
   const { rows } = await query(
     `SELECT id, method, body_raw, source_ip, received_at
        FROM requests
@@ -206,7 +208,28 @@ export async function searchRequests(projectId, term, limit = 100) {
         AND (body_raw ILIKE $2 OR body_json::text ILIKE $2)
       ORDER BY received_at DESC, id DESC
       LIMIT $3`,
-    [projectId, like, limit],
+    [projectId, bodyLike(term), limit],
+  );
+  return rows;
+}
+
+// Live feed (step 7): rows newer than the cursor the client last saw, optionally filtered by
+// the same search term so polling respects an active search. Newest first, like the feed.
+export async function requestsSince(projectId, sinceId, term = null, limit = 100) {
+  const params = [projectId, sinceId];
+  let filter = '';
+  if (term) {
+    params.push(bodyLike(term));
+    filter = `AND (body_raw ILIKE $${params.length} OR body_json::text ILIKE $${params.length})`;
+  }
+  params.push(limit);
+  const { rows } = await query(
+    `SELECT id, method, body_raw, source_ip, received_at
+       FROM requests
+      WHERE project_id = $1 AND id > $2 ${filter}
+      ORDER BY received_at DESC, id DESC
+      LIMIT $${params.length}`,
+    params,
   );
   return rows;
 }

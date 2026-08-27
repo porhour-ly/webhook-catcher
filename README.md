@@ -16,13 +16,12 @@ See [webhook-catcher-build-brief.md](./webhook-catcher-build-brief.md) for the f
 - **Anyone with the shared password sees everything.** There are no per-user accounts and no
   record of who viewed what. Treat the password like the data behind it.
 
-## Status: steps 1–6 of 7 complete
+## Status: all 7 steps complete
 
 Core loop (receive → store → view) behind a shared password, multiple projects with
 generated slugs, a per-request detail view (pretty-printed headers/query/body), freeform
-search within a project, and a daily retention sweep that deletes requests older than 30 days.
-
-Not built yet: auto-refresh / live-feed polish (7).
+search within a project, a daily retention sweep that deletes requests older than 30 days,
+and a live feed that polls for new requests and prepends them without a full reload.
 
 ## Running locally
 
@@ -70,6 +69,7 @@ that's the signal to move to Railway or a paid instance.
 | `GET /projects` | Gated. Project list + create form. |
 | `POST /projects` | Gated. Creates a project (generates a URL-safe slug). |
 | `GET /projects/:slug` | Gated. The feed, newest first. `?q=` searches request bodies. |
+| `GET /projects/:slug/feed` | Gated. JSON. Rows newer than `?since=<id>` (respects `?q=`); the live feed polls this. |
 | `GET /projects/:slug/requests/:id` | Gated. One request, pretty-printed. |
 | `GET /` | Gated. Redirects to the project list. |
 
@@ -103,3 +103,11 @@ A daily in-process sweep deletes requests older than 30 days (override with `RET
 a whole number ≥ 1). It also runs once on boot — on a free-tier host that sleeps when idle,
 an incoming webhook wakes the service and triggers a sweep, so the table stays bounded without
 a separate cron. This is a debugging tool, not an archive; old callbacks are noise.
+
+### Live feed
+
+The project feed polls `GET /projects/:slug/feed?since=<id>` every few seconds and prepends
+anything newer than the last row it's seen — polling, not websockets, which is plenty for a
+staging tool. Rows come back as pre-rendered HTML from the same helper the page uses, so
+live-inserted rows are identical to rendered ones. Polling pauses while the browser tab is
+hidden, respects an active search (`?q=`), and the "live" dot greys out if a poll fails.

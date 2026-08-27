@@ -34,6 +34,12 @@ function layout(title, body) {
         background: color-mix(in srgb, currentColor 7%, transparent);
         white-space: pre-wrap; word-break: break-word; overflow-x: auto; }
   h2 { font-size: .95rem; margin: 1.75rem 0 .25rem; opacity: .8; }
+  .live { font-size: .6875rem; font-weight: 400; text-transform: uppercase; letter-spacing: .05em;
+          opacity: .6; vertical-align: middle; margin-left: .375rem; }
+  .dot { display: inline-block; width: .5rem; height: .5rem; border-radius: 50%;
+         background: #22c55e; margin-right: .25rem; animation: pulse 2s ease-in-out infinite; }
+  .dot.stale { background: #9ca3af; animation: none; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
   a.req { display: block; padding: 1rem .25rem; text-decoration: none; color: inherit;
           border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
   a.req:hover { background: color-mix(in srgb, currentColor 6%, transparent); }
@@ -130,27 +136,30 @@ ${list}
   );
 }
 
-export function projectPage({ project, requests, hookUrl, query = '' }) {
-  const searching = query.trim().length > 0;
-
-  const emptyMessage = searching
-    ? `No requests match <strong>${escapeHtml(query)}</strong>.`
-    : 'No requests yet. Send one to the URL above.';
-
-  const feed = requests.length
-    ? requests
-        .map(
-          (r) => `<a class="req" href="/projects/${encodeURIComponent(project.slug)}/requests/${r.id}">
+// One feed row. Shared by the server-rendered feed and the JSON poll endpoint so live-inserted
+// rows are byte-identical to rendered ones. data-id is the cursor the poller advances past.
+export function feedItem(project, r) {
+  return `<a class="req" data-id="${r.id}" href="/projects/${encodeURIComponent(project.slug)}/requests/${r.id}">
   <div class="meta">
     <span class="method">${escapeHtml(r.method)}</span>
     <span class="time">${escapeHtml(new Date(r.received_at).toISOString())}</span>
     <span class="ip">from ${escapeHtml(r.source_ip)}</span>
   </div>
   ${preview(r.body_raw)}
-</a>`,
-        )
-        .join('\n')
-    : `<p class="none">${emptyMessage}</p>`;
+</a>`;
+}
+
+export function projectPage({ project, requests, hookUrl, query = '' }) {
+  const searching = query.trim().length > 0;
+
+  const emptyMessage = searching
+    ? `No requests match <strong>${escapeHtml(query)}</strong>.`
+    : `No requests yet. Send one to <code>${escapeHtml(hookUrl)}</code> and it appears here — no refresh needed.`;
+
+  const rows = requests.map((r) => feedItem(project, r)).join('\n');
+  const emptyState = `<p class="none" id="feed-empty">${emptyMessage}</p>`;
+  // The cursor starts at the newest id on the page; the poller asks for anything greater.
+  const lastId = requests[0]?.id ?? 0;
 
   const search = `<form class="search" method="get" action="/projects/${encodeURIComponent(project.slug)}">
   <input name="q" type="search" placeholder="Search request bodies…" value="${escapeHtml(query)}" autocomplete="off">
@@ -159,18 +168,53 @@ export function projectPage({ project, requests, hookUrl, query = '' }) {
 </form>
 ${searching ? `<p class="sub">${requests.length} match${requests.length === 1 ? '' : 'es'} for <strong>${escapeHtml(query)}</strong>.</p>` : ''}`;
 
+  const feedBlock = `<div id="feed" data-slug="${escapeHtml(project.slug)}" data-q="${escapeHtml(query)}" data-last="${lastId}">
+${rows}
+${requests.length ? '' : emptyState}
+</div>`;
+
+  // Client-side polling — no build step, no framework. Asks the feed endpoint for rows newer
+  // than the cursor every few seconds and prepends them, pausing while the tab is hidden.
+  const pollScript = `<script>
+(function () {
+  var feed = document.getElementById('feed');
+  if (!feed) return;
+  var slug = feed.dataset.slug;
+  var q = feed.dataset.q || '';
+  var dot = document.getElementById('live-dot');
+  async function poll() {
+    var url = '/projects/' + encodeURIComponent(slug) + '/feed?since=' + (feed.dataset.last || 0) +
+      (q ? '&q=' + encodeURIComponent(q) : '');
+    try {
+      var res = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!res.ok) { if (dot) dot.classList.add('stale'); return; }
+      if (dot) dot.classList.remove('stale');
+      var data = await res.json();
+      if (data.html) {
+        var empty = document.getElementById('feed-empty');
+        if (empty) empty.remove();
+        feed.insertAdjacentHTML('afterbegin', data.html);
+        feed.dataset.last = data.lastId;
+      }
+    } catch (e) { if (dot) dot.classList.add('stale'); }
+  }
+  setInterval(function () { if (!document.hidden) poll(); }, 4000);
+})();
+</script>`;
+
   return layout(
     `${project.name} — Webhook Catcher`,
     `<div class="head">
   <div>
     <p class="back"><a href="/projects">← Projects</a></p>
-    <h1>${escapeHtml(project.name)}</h1>
+    <h1>${escapeHtml(project.name)} <span class="live"><span id="live-dot" class="dot"></span>live</span></h1>
   </div>
   <form method="post" action="/logout"><button type="submit">Log out</button></form>
 </div>
 <p class="sub">Send anything to <code>${escapeHtml(hookUrl)}</code> — any method, any body.</p>
 ${search}
-${feed}`,
+${feedBlock}
+${pollScript}`,
   );
 }
 
