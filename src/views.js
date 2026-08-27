@@ -10,6 +10,14 @@ const escapeHtml = (value) =>
 
 const BODY_PREVIEW_LIMIT = 2000;
 
+// Colour-coded HTTP method pill. Unknown methods fall back to the neutral base style.
+const KNOWN_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
+function methodBadge(method) {
+  const m = String(method ?? '').toUpperCase();
+  const cls = KNOWN_METHODS.has(m) ? ` m-${m.toLowerCase()}` : '';
+  return `<span class="method${cls}">${escapeHtml(m)}</span>`;
+}
+
 // Indent a JSON string so it's readable instead of one long line. Returns the input unchanged
 // if it isn't JSON — the cheap first-char check avoids a try/parse on plainly non-JSON bodies.
 function prettyIfJson(text) {
@@ -38,77 +46,158 @@ function layout(title, body) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <style>
-  :root { color-scheme: light dark; }
-  body { font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; margin: 0; padding: 2rem 1.5rem; max-width: 60rem; }
-  h1 { font-size: 1.25rem; margin: 0 0 .25rem; }
-  .sub { opacity: .7; font-size: .875rem; margin: 0 0 1.5rem; }
-  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8125rem; }
-  pre { margin: .5rem 0 0; padding: .625rem .75rem; border-radius: 6px;
-        background: color-mix(in srgb, currentColor 7%, transparent);
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #f1f2f4;
+    --text: #17181b;
+    --muted: #6a707c;
+    --border: #e4e6ea;
+    --border-strong: #d3d6dc;
+    --accent: #4f46e5;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --shadow: 0 1px 2px rgba(17, 24, 39, .04), 0 2px 6px rgba(17, 24, 39, .05);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c0d10;
+      --surface: #17181c;
+      --surface-2: #202127;
+      --text: #e8e9ec;
+      --muted: #9096a1;
+      --border: #26282e;
+      --border-strong: #34363d;
+      --accent: #818cf8;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 2px 8px rgba(0, 0, 0, .25);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+         margin: 0; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 62rem; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+  a { color: var(--accent); }
+
+  h1 { font-size: 1.4rem; font-weight: 650; letter-spacing: -.01em; margin: 0; }
+  h2 { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+       color: var(--muted); margin: 0; }
+  .sub { color: var(--muted); font-size: .875rem; margin: .35rem 0 1.75rem; }
+  .sub code { color: var(--text); }
+  code, pre { font-family: var(--mono); font-size: .8125rem; }
+  code { background: var(--surface-2); padding: .1em .4em; border-radius: 5px; }
+  pre { margin: 0; padding: .75rem .875rem; border-radius: var(--radius-sm);
+        background: var(--surface-2); border: 1px solid var(--border);
         white-space: pre-wrap; word-break: break-word; overflow-x: auto; }
-  a.req pre { max-height: 20rem; overflow: auto; }
-  h2 { font-size: .95rem; margin: 1.75rem 0 .25rem; opacity: .8; }
-  .live { font-size: .6875rem; font-weight: 400; text-transform: uppercase; letter-spacing: .05em;
-          opacity: .6; vertical-align: middle; margin-left: .375rem; }
-  .dot { display: inline-block; width: .5rem; height: .5rem; border-radius: 50%;
-         background: #22c55e; margin-right: .25rem; animation: pulse 2s ease-in-out infinite; }
-  .dot.stale { background: #9ca3af; animation: none; }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
-  a.req { display: block; padding: 1rem .25rem; text-decoration: none; color: inherit;
-          border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
-  a.req:hover { background: color-mix(in srgb, currentColor 6%, transparent); }
-  details { margin-top: .5rem; }
-  summary { cursor: pointer; font-size: .8125rem; opacity: .7; }
-  .req { padding: 1rem 0; border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
-  .meta { display: flex; flex-wrap: wrap; gap: .625rem; align-items: baseline; }
-  .method { font-weight: 600; font-family: ui-monospace, monospace; }
-  .time, .ip { opacity: .65; font-size: .8125rem; }
-  .empty { opacity: .55; font-style: italic; }
-  .none { padding: 2rem 0; opacity: .65; }
-  .head { display: flex; justify-content: space-between; align-items: start; gap: 1rem; }
-  button { font: inherit; padding: .375rem .75rem; border-radius: 6px; cursor: pointer;
-           border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-           background: transparent; color: inherit; }
-  button:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
-  .section-head { display: flex; align-items: center; gap: .75rem; }
-  .copy { font: inherit; font-size: .75rem; line-height: 1; padding: .25rem .5rem; border-radius: 5px;
-          cursor: pointer; user-select: none; color: inherit; background: transparent;
-          border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
-  .copy:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
-  .copy.copied { border-color: #22c55e; color: #22c55e; }
+  pre code { background: none; padding: 0; }
+
+  .head { display: flex; justify-content: space-between; align-items: start; gap: 1rem;
+          margin-bottom: 1.5rem; }
+  .back { margin: 0 0 .4rem; font-size: .8125rem; }
+  .back a { color: var(--muted); text-decoration: none; }
+  .back a:hover { color: var(--text); }
+
+  /* HTTP method pills */
+  .method { display: inline-flex; align-items: center; font-family: var(--mono); font-weight: 600;
+            font-size: .6875rem; letter-spacing: .03em; padding: .2rem .45rem; border-radius: 6px;
+            background: var(--surface-2); color: var(--muted); }
+  .m-get    { color: #15803d; background: color-mix(in srgb, #22c55e 15%, transparent); }
+  .m-post   { color: #1d4ed8; background: color-mix(in srgb, #3b82f6 15%, transparent); }
+  .m-put,
+  .m-patch  { color: #b45309; background: color-mix(in srgb, #f59e0b 18%, transparent); }
+  .m-delete { color: #b91c1c; background: color-mix(in srgb, #ef4444 15%, transparent); }
+  @media (prefers-color-scheme: dark) {
+    .m-get { color: #4ade80; } .m-post { color: #93b4fd; }
+    .m-put, .m-patch { color: #fbbf24; } .m-delete { color: #fca5a5; }
+  }
+
+  /* live indicator */
+  .live { display: inline-flex; align-items: center; gap: .3rem; font-size: .625rem; font-weight: 600;
+          text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+          vertical-align: middle; margin-left: .5rem; }
+  .dot { width: .45rem; height: .45rem; border-radius: 50%; background: #22c55e;
+         box-shadow: 0 0 0 0 color-mix(in srgb, #22c55e 60%, transparent);
+         animation: pulse 2s ease-in-out infinite; }
+  .dot.stale { background: #9ca3af; animation: none; box-shadow: none; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, #22c55e 55%, transparent); }
+                     70% { box-shadow: 0 0 0 .35rem transparent; }
+                     100% { box-shadow: 0 0 0 0 transparent; } }
+
+  /* feed cards */
+  #feed { display: flex; flex-direction: column; gap: .75rem; }
+  a.req { display: block; padding: .9rem 1rem; text-decoration: none; color: inherit;
+          background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+          box-shadow: var(--shadow); transition: border-color .15s ease, transform .08s ease; }
+  a.req:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+  a.req:active { transform: translateY(1px); }
+  a.req pre { max-height: 20rem; overflow: auto; margin-top: .7rem; }
+  .meta { display: flex; flex-wrap: wrap; gap: .55rem; align-items: center; }
+  .time { color: var(--muted); font-size: .8125rem; font-variant-numeric: tabular-nums; }
+  .ip { color: var(--muted); font-size: .8125rem; }
+  .empty { color: var(--muted); font-style: italic; }
+  .none { padding: 2.5rem 1rem; text-align: center; color: var(--muted);
+          background: var(--surface); border: 1px dashed var(--border-strong);
+          border-radius: var(--radius); }
+  details { margin-top: .6rem; }
+  summary { cursor: pointer; font-size: .8125rem; color: var(--muted); }
+  summary:hover { color: var(--text); }
+
+  /* controls */
+  button, .btn { font: inherit; font-weight: 500; padding: .5rem .85rem; border-radius: var(--radius-sm);
+           cursor: pointer; border: 1px solid var(--border-strong); background: var(--surface);
+           color: var(--text); transition: background .12s ease, border-color .12s ease; }
+  button:hover, .btn:hover { background: var(--surface-2); border-color: var(--muted); }
+  input { font: inherit; padding: .55rem .7rem; border-radius: var(--radius-sm); background: var(--surface);
+          color: var(--text); border: 1px solid var(--border-strong); }
+  input::placeholder { color: var(--muted); }
+  input:focus-visible, button:focus-visible, .copy:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
+
+  .section-head { display: flex; align-items: center; gap: .75rem; margin: 1.75rem 0 .5rem; }
+  .copy { font: inherit; font-size: .7rem; font-weight: 500; line-height: 1; padding: .3rem .55rem;
+          border-radius: 6px; cursor: pointer; user-select: none; color: var(--muted);
+          background: var(--surface); border: 1px solid var(--border-strong); }
+  .copy:hover { color: var(--text); background: var(--surface-2); }
+  .copy.copied { border-color: #22c55e; color: #16a34a; background: color-mix(in srgb, #22c55e 12%, transparent); }
   .req-copy { margin-left: auto; }
-  .back { margin: 0 0 .25rem; font-size: .8125rem; }
-  .back a { color: inherit; opacity: .65; text-decoration: none; }
-  .back a:hover { opacity: 1; text-decoration: underline; }
-  .search { display: flex; gap: .5rem; align-items: center; margin: 0 0 .5rem; }
-  .search input { flex: 1; font: inherit; padding: .5rem .625rem; border-radius: 6px;
-                  background: transparent; color: inherit;
-                  border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
-  .search .clear { font-size: .8125rem; opacity: .7; color: inherit; }
-  .create { display: flex; gap: .5rem; margin: 0 0 1rem; }
-  .create input { flex: 1; font: inherit; padding: .5rem .625rem; border-radius: 6px;
-                  background: transparent; color: inherit;
-                  border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
-  .projects { display: flex; flex-direction: column; }
-  a.project { display: flex; flex-wrap: wrap; gap: .375rem 1rem; align-items: baseline;
-              padding: .875rem .25rem; text-decoration: none; color: inherit;
-              border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
-  a.project:hover { background: color-mix(in srgb, currentColor 6%, transparent); }
-  .project-name { font-weight: 600; }
-  .project-slug { opacity: .8; }
-  .project-stat { margin-left: auto; opacity: .6; font-size: .8125rem; }
-  .login { max-width: 20rem; margin: 4rem auto; }
-  .login label { display: block; font-size: .875rem; margin-bottom: .375rem; }
-  .login input { width: 100%; box-sizing: border-box; font: inherit; padding: .5rem .625rem;
-                 border-radius: 6px; background: transparent; color: inherit;
-                 border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
-  .login button { width: 100%; margin-top: .75rem; }
-  .error { color: #dc2626; font-size: .875rem; margin: .75rem 0 0; }
-  @media (prefers-color-scheme: dark) { .error { color: #f87171; } }
+
+  .search { display: flex; gap: .5rem; align-items: center; margin: 0 0 1rem; }
+  .search input { flex: 1; }
+  .search .clear { font-size: .8125rem; color: var(--muted); text-decoration: none; }
+  .search .clear:hover { color: var(--text); }
+  .create { display: flex; gap: .5rem; margin: 0 0 1.5rem; }
+  .create input { flex: 1; }
+
+  /* project list */
+  .projects { display: flex; flex-direction: column; gap: .625rem; }
+  a.project { display: flex; flex-wrap: wrap; gap: .3rem .9rem; align-items: center;
+              padding: 1rem 1.1rem; text-decoration: none; color: inherit; background: var(--surface);
+              border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+              transition: border-color .15s ease; }
+  a.project:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+  .project-name { font-weight: 600; font-size: 1.02rem; }
+  .project-slug { color: var(--muted); }
+  .project-stat { margin-left: auto; color: var(--muted); font-size: .8125rem; }
+
+  /* login */
+  .login { max-width: 22rem; margin: 12vh auto 0; background: var(--surface); padding: 2rem;
+           border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .login h1 { font-size: 1.25rem; }
+  .login .sub { margin: .35rem 0 1.5rem; }
+  .login label { display: block; font-size: .8125rem; font-weight: 500; margin-bottom: .4rem; }
+  .login input { width: 100%; }
+  .login button { width: 100%; margin-top: .9rem; background: var(--accent); color: #fff;
+                  border-color: var(--accent); font-weight: 600; }
+  .login button:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
+  .error { color: #dc2626; font-size: .8125rem; margin: .85rem 0 0; }
+  @media (prefers-color-scheme: dark) { .error { color: #fca5a5; } }
 </style>
 </head>
 <body>
+<div class="wrap">
 ${body}
+</div>
 <script>
 // Delegated so it also covers feed rows added live after load. A copy control either names its
 // source with data-copy="#id" (detail page) or copies the <pre> in its own feed row.
@@ -187,7 +276,7 @@ export function feedItem(project, r) {
     : '';
   return `<a class="req" data-id="${r.id}" href="/projects/${encodeURIComponent(project.slug)}/requests/${r.id}">
   <div class="meta">
-    <span class="method">${escapeHtml(r.method)}</span>
+    ${methodBadge(r.method)}
     <span class="time">${escapeHtml(new Date(r.received_at).toISOString())}</span>
     <span class="ip">from ${escapeHtml(r.source_ip)}</span>
     ${copy}
@@ -297,7 +386,7 @@ export function requestPage({ project, request }) {
     `<div class="head">
   <div>
     <p class="back"><a href="/projects/${encodeURIComponent(project.slug)}">← ${escapeHtml(project.name)}</a></p>
-    <h1><span class="method">${escapeHtml(request.method)}</span> request</h1>
+    <h1>${methodBadge(request.method)} request</h1>
   </div>
   <form method="post" action="/logout"><button type="submit">Log out</button></form>
 </div>
@@ -311,10 +400,10 @@ export function requestPage({ project, request }) {
 <div id="body">${bodyBlock(request)}</div>
 ${showRawToo ? `<details><summary>Raw body</summary><pre>${escapeHtml(request.body_raw)}</pre></details>` : ''}
 
-<h2>Query</h2>
+<div class="section-head"><h2>Query</h2></div>
 ${kvBlock(request.query)}
 
-<h2>Headers</h2>
+<div class="section-head"><h2>Headers</h2></div>
 ${kvBlock(request.headers)}`,
   );
 }
