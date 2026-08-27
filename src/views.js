@@ -70,6 +70,13 @@ function layout(title, body) {
            border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
            background: transparent; color: inherit; }
   button:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
+  .section-head { display: flex; align-items: center; gap: .75rem; }
+  .copy { font: inherit; font-size: .75rem; line-height: 1; padding: .25rem .5rem; border-radius: 5px;
+          cursor: pointer; user-select: none; color: inherit; background: transparent;
+          border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
+  .copy:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
+  .copy.copied { border-color: #22c55e; color: #22c55e; }
+  .req-copy { margin-left: auto; }
   .back { margin: 0 0 .25rem; font-size: .8125rem; }
   .back a { color: inherit; opacity: .65; text-decoration: none; }
   .back a:hover { opacity: 1; text-decoration: underline; }
@@ -102,6 +109,26 @@ function layout(title, body) {
 </head>
 <body>
 ${body}
+<script>
+// Delegated so it also covers feed rows added live after load. A copy control either names its
+// source with data-copy="#id" (detail page) or copies the <pre> in its own feed row.
+document.addEventListener('click', function (e) {
+  var btn = e.target.closest('.copy');
+  if (!btn) return;
+  e.preventDefault(); // feed copies live inside the row's link — don't navigate
+  var src = btn.dataset.copy
+    ? document.querySelector(btn.dataset.copy)
+    : (btn.closest('.req') ? btn.closest('.req').querySelector('pre') : null);
+  if (!src || !navigator.clipboard) return;
+  navigator.clipboard.writeText(src.innerText).then(function () {
+    var label = btn.getAttribute('data-copy-label') || btn.textContent;
+    btn.setAttribute('data-copy-label', label);
+    btn.textContent = 'Copied';
+    btn.classList.add('copied');
+    setTimeout(function () { btn.textContent = label; btn.classList.remove('copied'); }, 1200);
+  }).catch(function () {});
+});
+</script>
 </body>
 </html>`;
 }
@@ -153,11 +180,17 @@ ${list}
 // One feed row. Shared by the server-rendered feed and the JSON poll endpoint so live-inserted
 // rows are byte-identical to rendered ones. data-id is the cursor the poller advances past.
 export function feedItem(project, r) {
+  // A span, not a button: a <button> nested in the row's <a> is invalid and some parsers
+  // relocate it. role/tabindex keep it operable; the delegated handler does the copy.
+  const copy = r.body_raw
+    ? '<span class="copy req-copy" role="button" tabindex="0">Copy</span>'
+    : '';
   return `<a class="req" data-id="${r.id}" href="/projects/${encodeURIComponent(project.slug)}/requests/${r.id}">
   <div class="meta">
     <span class="method">${escapeHtml(r.method)}</span>
     <span class="time">${escapeHtml(new Date(r.received_at).toISOString())}</span>
     <span class="ip">from ${escapeHtml(r.source_ip)}</span>
+    ${copy}
   </div>
   ${preview(r.body_raw)}
 </a>`;
@@ -256,6 +289,8 @@ function bodyBlock({ body_raw, body_json }) {
 export function requestPage({ project, request }) {
   const contentType = request.headers?.['content-type'] ?? null;
   const showRawToo = request.body_json !== null && request.body_json !== undefined && request.body_raw;
+  const hasBody =
+    (request.body_json !== null && request.body_json !== undefined) || Boolean(request.body_raw);
 
   return layout(
     `${request.method} — ${project.name} — Webhook Catcher`,
@@ -272,8 +307,8 @@ export function requestPage({ project, request }) {
   ${contentType ? `· <code>${escapeHtml(contentType)}</code>` : ''}
 </p>
 
-<h2>Body</h2>
-${bodyBlock(request)}
+<div class="section-head"><h2>Body</h2>${hasBody ? '<button type="button" class="copy" data-copy="#body">Copy</button>' : ''}</div>
+<div id="body">${bodyBlock(request)}</div>
 ${showRawToo ? `<details><summary>Raw body</summary><pre>${escapeHtml(request.body_raw)}</pre></details>` : ''}
 
 <h2>Query</h2>
