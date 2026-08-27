@@ -10,10 +10,23 @@ const escapeHtml = (value) =>
 
 const BODY_PREVIEW_LIMIT = 2000;
 
+// Indent a JSON string so it's readable instead of one long line. Returns the input unchanged
+// if it isn't JSON — the cheap first-char check avoids a try/parse on plainly non-JSON bodies.
+function prettyIfJson(text) {
+  const trimmed = text.trim();
+  if (!trimmed || (trimmed[0] !== '{' && trimmed[0] !== '[')) return text;
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return text; // looked like JSON but wasn't — show it as-is
+  }
+}
+
 function preview(bodyRaw) {
   if (!bodyRaw) return '<span class="empty">(no body)</span>';
-  const truncated = bodyRaw.length > BODY_PREVIEW_LIMIT;
-  const shown = truncated ? bodyRaw.slice(0, BODY_PREVIEW_LIMIT) : bodyRaw;
+  const text = prettyIfJson(bodyRaw);
+  const truncated = text.length > BODY_PREVIEW_LIMIT;
+  const shown = truncated ? text.slice(0, BODY_PREVIEW_LIMIT) : text;
   return `<pre>${escapeHtml(shown)}${truncated ? '\n… truncated' : ''}</pre>`;
 }
 
@@ -33,6 +46,7 @@ function layout(title, body) {
   pre { margin: .5rem 0 0; padding: .625rem .75rem; border-radius: 6px;
         background: color-mix(in srgb, currentColor 7%, transparent);
         white-space: pre-wrap; word-break: break-word; overflow-x: auto; }
+  a.req pre { max-height: 20rem; overflow: auto; }
   h2 { font-size: .95rem; margin: 1.75rem 0 .25rem; opacity: .8; }
   .live { font-size: .6875rem; font-weight: 400; text-transform: uppercase; letter-spacing: .05em;
           opacity: .6; vertical-align: middle; margin-left: .375rem; }
@@ -235,7 +249,8 @@ function bodyBlock({ body_raw, body_json }) {
     return `<pre>${escapeHtml(JSON.stringify(body_json, null, 2))}</pre>`;
   }
   if (!body_raw) return '<p class="empty">(no body)</p>';
-  return `<pre>${escapeHtml(body_raw)}</pre>`;
+  // No body_json (e.g. JSON sent without a JSON content-type) — still indent it if it parses.
+  return `<pre>${escapeHtml(prettyIfJson(body_raw))}</pre>`;
 }
 
 export function requestPage({ project, request }) {
