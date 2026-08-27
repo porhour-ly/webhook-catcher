@@ -167,21 +167,25 @@ function layout(title, body) {
   .danger { color: #dc2626; border-color: color-mix(in srgb, #ef4444 45%, var(--border-strong)); }
   .danger:hover { background: color-mix(in srgb, #ef4444 12%, transparent); border-color: #ef4444; }
   @media (prefers-color-scheme: dark) { .danger { color: #fca5a5; } }
-  .settings { margin: 0 0 1.25rem; }
-  .settings > summary { display: inline-flex; align-items: center; gap: .4rem; width: fit-content;
-                        font-size: .8125rem; font-weight: 500; color: var(--text); cursor: pointer;
-                        padding: .45rem .75rem; border-radius: var(--radius-sm);
-                        border: 1px solid var(--border-strong); background: var(--surface);
-                        list-style: none; }
-  .settings > summary::-webkit-details-marker { display: none; }
-  .settings > summary:hover { background: var(--surface-2); border-color: var(--muted); }
-  .settings[open] > summary { margin-bottom: .25rem; }
-  .settings-body { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center;
-                   margin-top: .75rem; padding: 1rem; background: var(--surface);
-                   border: 1px solid var(--border); border-radius: var(--radius); }
-  .settings-body .rename { display: flex; gap: .5rem; flex: 1; min-width: 16rem; }
-  .settings-body .rename input { flex: 1; }
-  .head-actions { display: flex; gap: .5rem; }
+  .head-actions { display: flex; gap: .5rem; align-items: start; }
+  .menu { position: relative; }
+  .menu > summary { display: inline-flex; align-items: center; gap: .4rem; list-style: none;
+                    font: inherit; font-weight: 500; color: var(--text); cursor: pointer;
+                    padding: .5rem .85rem; border-radius: var(--radius-sm);
+                    border: 1px solid var(--border-strong); background: var(--surface); }
+  .menu > summary::-webkit-details-marker { display: none; }
+  .menu > summary:hover { background: var(--surface-2); border-color: var(--muted); }
+  .menu-panel { position: absolute; right: 0; top: calc(100% + .45rem); z-index: 20; width: 20rem;
+                display: flex; flex-direction: column; gap: .85rem; padding: 1rem;
+                background: var(--surface); border: 1px solid var(--border);
+                border-radius: var(--radius); box-shadow: 0 8px 28px rgba(17, 24, 39, .12); }
+  @media (prefers-color-scheme: dark) { .menu-panel { box-shadow: 0 8px 28px rgba(0, 0, 0, .45); } }
+  .menu-panel label { display: block; font-size: .75rem; font-weight: 500; color: var(--muted);
+                      margin-bottom: .4rem; }
+  .rename-row { display: flex; gap: .5rem; }
+  .rename-row input { flex: 1; min-width: 0; }
+  .menu-sep { height: 1px; background: var(--border); margin: .1rem -1rem; }
+  .block { width: 100%; }
 
   .search { display: flex; gap: .5rem; align-items: center; margin: 0 0 1rem; }
   .search input { flex: 1; }
@@ -248,6 +252,16 @@ document.addEventListener('click', function (e) {
   fetch(card.getAttribute('href') + '/delete', {
     method: 'POST', headers: { Accept: 'application/json' },
   }).then(function (res) { if (res.ok) card.remove(); });
+});
+// Close the settings dropdown when clicking outside it or pressing Escape.
+document.addEventListener('click', function (e) {
+  document.querySelectorAll('details.menu[open]').forEach(function (d) {
+    if (!d.contains(e.target)) d.removeAttribute('open');
+  });
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Escape') return;
+  document.querySelectorAll('details.menu[open]').forEach(function (d) { d.removeAttribute('open'); });
 });
 </script>
 </body>
@@ -378,22 +392,28 @@ ${requests.length ? '' : emptyState}
     <p class="back"><a href="/projects">← Projects</a></p>
     <h1>${escapeHtml(project.name)} <span class="live"><span id="live-dot" class="dot"></span>live</span></h1>
   </div>
-  <form method="post" action="/logout"><button type="submit">Log out</button></form>
+  <div class="head-actions">
+    <details class="menu">
+      <summary>⚙ Project settings</summary>
+      <div class="menu-panel">
+        <form class="rename" method="post" action="/projects/${encodeURIComponent(project.slug)}/rename">
+          <label for="rename-input">Project name</label>
+          <div class="rename-row">
+            <input id="rename-input" name="name" value="${escapeHtml(project.name)}" maxlength="120" autocomplete="off" required>
+            <button type="submit">Save</button>
+          </div>
+        </form>
+        <div class="menu-sep"></div>
+        <form method="post" action="/projects/${encodeURIComponent(project.slug)}/delete"
+              onsubmit="return confirm('Delete this project and all its requests? This cannot be undone.')">
+          <button type="submit" class="danger block">Delete project</button>
+        </form>
+      </div>
+    </details>
+    <form method="post" action="/logout"><button type="submit">Log out</button></form>
+  </div>
 </div>
 <p class="sub">Send anything to <code>${escapeHtml(hookUrl)}</code> — any method, any body.</p>
-<details class="settings">
-  <summary>⚙ Rename or delete project</summary>
-  <div class="settings-body">
-    <form class="rename" method="post" action="/projects/${encodeURIComponent(project.slug)}/rename">
-      <input name="name" value="${escapeHtml(project.name)}" maxlength="120" autocomplete="off" required aria-label="Project name">
-      <button type="submit">Rename</button>
-    </form>
-    <form method="post" action="/projects/${encodeURIComponent(project.slug)}/delete"
-          onsubmit="return confirm('Delete this project and all its requests? This cannot be undone.')">
-      <button type="submit" class="danger">Delete project</button>
-    </form>
-  </div>
-</details>
 ${search}
 ${feedBlock}
 ${pollScript}`,
