@@ -1,0 +1,21 @@
+# Render Blueprint — one-click deploy for the app.
+# The database lives on Neon (free managed Postgres); its connection string goes in
+# DATABASE_URL. Both secrets are `sync: false`, so Render prompts you for them at deploy
+# time instead of keeping them in this file (which is committed to the repo).
+services:
+  - type: web
+    name: webhook-catcher
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Shared dashboard password. Paste the value when Render asks.
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      # Neon Postgres connection string (the "pooled" one). Paste it when Render asks.
+      - key: DATABASE_URL
+        sync: false
