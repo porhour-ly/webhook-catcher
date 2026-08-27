@@ -33,6 +33,12 @@ function layout(title, body) {
   pre { margin: .5rem 0 0; padding: .625rem .75rem; border-radius: 6px;
         background: color-mix(in srgb, currentColor 7%, transparent);
         white-space: pre-wrap; word-break: break-word; overflow-x: auto; }
+  h2 { font-size: .95rem; margin: 1.75rem 0 .25rem; opacity: .8; }
+  a.req { display: block; padding: 1rem .25rem; text-decoration: none; color: inherit;
+          border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+  a.req:hover { background: color-mix(in srgb, currentColor 6%, transparent); }
+  details { margin-top: .5rem; }
+  summary { cursor: pointer; font-size: .8125rem; opacity: .7; }
   .req { padding: 1rem 0; border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
   .meta { display: flex; flex-wrap: wrap; gap: .625rem; align-items: baseline; }
   .method { font-weight: 600; font-family: ui-monospace, monospace; }
@@ -123,14 +129,14 @@ export function projectPage({ project, requests, hookUrl }) {
   const feed = requests.length
     ? requests
         .map(
-          (r) => `<div class="req">
+          (r) => `<a class="req" href="/projects/${encodeURIComponent(project.slug)}/requests/${r.id}">
   <div class="meta">
     <span class="method">${escapeHtml(r.method)}</span>
     <span class="time">${escapeHtml(new Date(r.received_at).toISOString())}</span>
     <span class="ip">from ${escapeHtml(r.source_ip)}</span>
   </div>
   ${preview(r.body_raw)}
-</div>`,
+</a>`,
         )
         .join('\n')
     : `<p class="none">No requests yet. Send one to the URL above.</p>`;
@@ -146,6 +152,57 @@ export function projectPage({ project, requests, hookUrl }) {
 </div>
 <p class="sub">Send anything to <code>${escapeHtml(hookUrl)}</code> — any method, any body.</p>
 ${feed}`,
+  );
+}
+
+// Render a flat object (headers, query string) as aligned "key: value" lines. Header values
+// can be arrays (repeated headers) — join them the way they arrived on the wire.
+function kvBlock(obj) {
+  const entries = Object.entries(obj ?? {});
+  if (!entries.length) return '<p class="empty">(none)</p>';
+  const lines = entries
+    .map(([k, v]) => `${escapeHtml(k)}: ${escapeHtml(Array.isArray(v) ? v.join(', ') : v)}`)
+    .join('\n');
+  return `<pre>${lines}</pre>`;
+}
+
+function bodyBlock({ body_raw, body_json }) {
+  if (body_json !== null && body_json !== undefined) {
+    // Pretty-print the parsed JSON; keep the raw form below so nothing is hidden.
+    return `<pre>${escapeHtml(JSON.stringify(body_json, null, 2))}</pre>`;
+  }
+  if (!body_raw) return '<p class="empty">(no body)</p>';
+  return `<pre>${escapeHtml(body_raw)}</pre>`;
+}
+
+export function requestPage({ project, request }) {
+  const contentType = request.headers?.['content-type'] ?? null;
+  const showRawToo = request.body_json !== null && request.body_json !== undefined && request.body_raw;
+
+  return layout(
+    `${request.method} — ${project.name} — Webhook Catcher`,
+    `<div class="head">
+  <div>
+    <p class="back"><a href="/projects/${encodeURIComponent(project.slug)}">← ${escapeHtml(project.name)}</a></p>
+    <h1><span class="method">${escapeHtml(request.method)}</span> request</h1>
+  </div>
+  <form method="post" action="/logout"><button type="submit">Log out</button></form>
+</div>
+<p class="sub">
+  ${escapeHtml(new Date(request.received_at).toISOString())}
+  · from ${escapeHtml(request.source_ip)}
+  ${contentType ? `· <code>${escapeHtml(contentType)}</code>` : ''}
+</p>
+
+<h2>Body</h2>
+${bodyBlock(request)}
+${showRawToo ? `<details><summary>Raw body</summary><pre>${escapeHtml(request.body_raw)}</pre></details>` : ''}
+
+<h2>Query</h2>
+${kvBlock(request.query)}
+
+<h2>Headers</h2>
+${kvBlock(request.headers)}`,
   );
 }
 

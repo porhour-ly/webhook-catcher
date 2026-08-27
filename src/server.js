@@ -3,13 +3,14 @@ import {
   ProjectError,
   createProject,
   findProjectBySlug,
+  getRequest,
   insertRequest,
   listProjects,
   listRequests,
   migrate,
 } from './db.js';
 import { attachAuthRoutes, readPassword, requireAuth } from './auth.js';
-import { loginPage, notFoundPage, projectPage, projectsPage } from './views.js';
+import { loginPage, notFoundPage, projectPage, projectsPage, requestPage } from './views.js';
 
 const PORT = process.env.PORT || 3000;
 const MAX_BODY = '5mb';
@@ -132,6 +133,28 @@ app.get('/projects/:slug', async (req, res, next) => {
         hookUrl: `${req.protocol}://${req.get('host')}/hooks/${project.slug}`,
       }),
     );
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get('/projects/:slug/requests/:id', async (req, res, next) => {
+  try {
+    const project = await findProjectBySlug(req.params.slug);
+    if (!project) {
+      res.status(404).send(notFoundPage(`No project with slug "${req.params.slug}".`));
+      return;
+    }
+
+    // Ids are serial integers; a non-numeric param is a 404, not a DB error.
+    const id = Number(req.params.id);
+    const request = Number.isInteger(id) ? await getRequest(project.id, id) : null;
+    if (!request) {
+      res.status(404).send(notFoundPage(`No request #${req.params.id} in "${project.slug}".`));
+      return;
+    }
+
+    res.send(requestPage({ project, request }));
   } catch (err) {
     next(err);
   }

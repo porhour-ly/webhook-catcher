@@ -157,6 +157,18 @@ export async function insertRequest(r) {
   );
 }
 
+// Detail view (step 4). Scoped by project_id as well as id so a request can only be
+// reached through the project that owns it — no cross-project id guessing.
+export async function getRequest(projectId, id) {
+  const { rows } = await query(
+    `SELECT id, method, headers, query, body_raw, body_json, source_ip, received_at
+       FROM requests
+      WHERE project_id = $1 AND id = $2`,
+    [projectId, id],
+  );
+  return rows[0] ?? null;
+}
+
 export async function listRequests(projectId, limit = 100) {
   const { rows } = await query(
     `SELECT id, method, body_raw, source_ip, received_at
