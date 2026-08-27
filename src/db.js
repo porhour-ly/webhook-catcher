@@ -180,3 +180,22 @@ export async function listRequests(projectId, limit = 100) {
   );
   return rows;
 }
+
+// Freeform search (step 5): match the term anywhere in the raw body or the JSONB cast to
+// text — no predefined fields, per the brief. body_json::text lets a value be found even
+// when a JSON payload arrived minified with no whitespace in body_raw.
+export async function searchRequests(projectId, term, limit = 100) {
+  // The term is literal text, so neutralise LIKE's own wildcards (% _ \) before wrapping it.
+  const escaped = String(term).replace(/[\\%_]/g, (c) => `\\${c}`);
+  const like = `%${escaped}%`;
+  const { rows } = await query(
+    `SELECT id, method, body_raw, source_ip, received_at
+       FROM requests
+      WHERE project_id = $1
+        AND (body_raw ILIKE $2 OR body_json::text ILIKE $2)
+      ORDER BY received_at DESC, id DESC
+      LIMIT $3`,
+    [projectId, like, limit],
+  );
+  return rows;
+}

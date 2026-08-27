@@ -8,6 +8,7 @@ import {
   listProjects,
   listRequests,
   migrate,
+  searchRequests,
 } from './db.js';
 import { attachAuthRoutes, readPassword, requireAuth } from './auth.js';
 import { loginPage, notFoundPage, projectPage, projectsPage, requestPage } from './views.js';
@@ -125,11 +126,15 @@ app.get('/projects/:slug', async (req, res, next) => {
       return;
     }
 
-    const requests = await listRequests(project.id);
+    const q = typeof req.query.q === 'string' ? req.query.q : '';
+    const requests = q.trim()
+      ? await searchRequests(project.id, q.trim())
+      : await listRequests(project.id);
     res.send(
       projectPage({
         project,
         requests,
+        query: q,
         hookUrl: `${req.protocol}://${req.get('host')}/hooks/${project.slug}`,
       }),
     );

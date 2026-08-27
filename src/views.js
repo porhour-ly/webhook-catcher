@@ -53,6 +53,11 @@ function layout(title, body) {
   .back { margin: 0 0 .25rem; font-size: .8125rem; }
   .back a { color: inherit; opacity: .65; text-decoration: none; }
   .back a:hover { opacity: 1; text-decoration: underline; }
+  .search { display: flex; gap: .5rem; align-items: center; margin: 0 0 .5rem; }
+  .search input { flex: 1; font: inherit; padding: .5rem .625rem; border-radius: 6px;
+                  background: transparent; color: inherit;
+                  border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
+  .search .clear { font-size: .8125rem; opacity: .7; color: inherit; }
   .create { display: flex; gap: .5rem; margin: 0 0 1rem; }
   .create input { flex: 1; font: inherit; padding: .5rem .625rem; border-radius: 6px;
                   background: transparent; color: inherit;
@@ -125,7 +130,13 @@ ${list}
   );
 }
 
-export function projectPage({ project, requests, hookUrl }) {
+export function projectPage({ project, requests, hookUrl, query = '' }) {
+  const searching = query.trim().length > 0;
+
+  const emptyMessage = searching
+    ? `No requests match <strong>${escapeHtml(query)}</strong>.`
+    : 'No requests yet. Send one to the URL above.';
+
   const feed = requests.length
     ? requests
         .map(
@@ -139,7 +150,14 @@ export function projectPage({ project, requests, hookUrl }) {
 </a>`,
         )
         .join('\n')
-    : `<p class="none">No requests yet. Send one to the URL above.</p>`;
+    : `<p class="none">${emptyMessage}</p>`;
+
+  const search = `<form class="search" method="get" action="/projects/${encodeURIComponent(project.slug)}">
+  <input name="q" type="search" placeholder="Search request bodies…" value="${escapeHtml(query)}" autocomplete="off">
+  <button type="submit">Search</button>
+  ${searching ? `<a class="clear" href="/projects/${encodeURIComponent(project.slug)}">Clear</a>` : ''}
+</form>
+${searching ? `<p class="sub">${requests.length} match${requests.length === 1 ? '' : 'es'} for <strong>${escapeHtml(query)}</strong>.</p>` : ''}`;
 
   return layout(
     `${project.name} — Webhook Catcher`,
@@ -151,6 +169,7 @@ export function projectPage({ project, requests, hookUrl }) {
   <form method="post" action="/logout"><button type="submit">Log out</button></form>
 </div>
 <p class="sub">Send anything to <code>${escapeHtml(hookUrl)}</code> — any method, any body.</p>
+${search}
 ${feed}`,
   );
 }
