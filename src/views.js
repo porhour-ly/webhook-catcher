@@ -392,26 +392,23 @@ ${requests.length ? '' : emptyState}
     <p class="back"><a href="/projects">← Projects</a></p>
     <h1>${escapeHtml(project.name)} <span class="live"><span id="live-dot" class="dot"></span>live</span></h1>
   </div>
-  <div class="head-actions">
-    <details class="menu">
-      <summary>⚙ Project settings</summary>
-      <div class="menu-panel">
-        <form class="rename" method="post" action="/projects/${encodeURIComponent(project.slug)}/rename">
-          <label for="rename-input">Project name</label>
-          <div class="rename-row">
-            <input id="rename-input" name="name" value="${escapeHtml(project.name)}" maxlength="120" autocomplete="off" required>
-            <button type="submit">Save</button>
-          </div>
-        </form>
-        <div class="menu-sep"></div>
-        <form method="post" action="/projects/${encodeURIComponent(project.slug)}/delete"
-              onsubmit="return confirm('Delete this project and all its requests? This cannot be undone.')">
-          <button type="submit" class="danger block">Delete project</button>
-        </form>
-      </div>
-    </details>
-    <form method="post" action="/logout"><button type="submit">Log out</button></form>
-  </div>
+  <details class="menu">
+    <summary>⚙ Project settings</summary>
+    <div class="menu-panel">
+      <form class="rename" method="post" action="/projects/${encodeURIComponent(project.slug)}/rename">
+        <label for="rename-input">Project name</label>
+        <div class="rename-row">
+          <input id="rename-input" name="name" value="${escapeHtml(project.name)}" maxlength="120" autocomplete="off" required>
+          <button type="submit">Save</button>
+        </div>
+      </form>
+      <div class="menu-sep"></div>
+      <form method="post" action="/projects/${encodeURIComponent(project.slug)}/delete"
+            onsubmit="return confirm('Delete this project and all its requests? This cannot be undone.')">
+        <button type="submit" class="danger block">Delete project</button>
+      </form>
+    </div>
+  </details>
 </div>
 <p class="sub">Send anything to <code>${escapeHtml(hookUrl)}</code> — any method, any body.</p>
 ${search}
