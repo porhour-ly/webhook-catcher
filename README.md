@@ -16,13 +16,13 @@ See [webhook-catcher-build-brief.md](./webhook-catcher-build-brief.md) for the f
 - **Anyone with the shared password sees everything.** There are no per-user accounts and no
   record of who viewed what. Treat the password like the data behind it.
 
-## Status: steps 1–2 of 7 complete
+## Status: steps 1–6 of 7 complete
 
-Core loop proven (receive → store → view) and the dashboard is behind a shared password.
-One hardcoded project (`default`), a bare feed showing method, timestamp, source IP and body.
+Core loop (receive → store → view) behind a shared password, multiple projects with
+generated slugs, a per-request detail view (pretty-printed headers/query/body), freeform
+search within a project, and a daily retention sweep that deletes requests older than 30 days.
 
-Not built yet: multi-project (3), request detail (4), search (5), 30-day retention (6),
-auto-refresh polish (7).
+Not built yet: auto-refresh / live-feed polish (7).
 
 ## Running locally
 
@@ -67,8 +67,11 @@ that's the signal to move to Railway or a paid instance.
 | `GET /healthz` | **Open.** Liveness check for the host. |
 | `GET/POST /login` | The password form. |
 | `POST /logout` | Clears the session. |
-| `GET /projects/:slug` | Gated. The feed, newest first. |
-| `GET /` | Gated. Redirects to the default project. |
+| `GET /projects` | Gated. Project list + create form. |
+| `POST /projects` | Gated. Creates a project (generates a URL-safe slug). |
+| `GET /projects/:slug` | Gated. The feed, newest first. `?q=` searches request bodies. |
+| `GET /projects/:slug/requests/:id` | Gated. One request, pretty-printed. |
+| `GET /` | Gated. Redirects to the project list. |
 
 `/hooks` is deliberately outside the gate — senders can't log in, and requiring them to
 would defeat the point of the tool. Everything else redirects to `/login` without a valid
@@ -93,3 +96,10 @@ see when debugging.
 
 An unknown slug still gets a `200`: a typo'd URL shouldn't look like an outage to the sender.
 It's logged as dropped on our side.
+
+### Retention
+
+A daily in-process sweep deletes requests older than 30 days (override with `RETENTION_DAYS`,
+a whole number ≥ 1). It also runs once on boot — on a free-tier host that sleeps when idle,
+an incoming webhook wakes the service and triggers a sweep, so the table stays bounded without
+a separate cron. This is a debugging tool, not an archive; old callbacks are noise.

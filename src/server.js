@@ -11,6 +11,7 @@ import {
   searchRequests,
 } from './db.js';
 import { attachAuthRoutes, readPassword, requireAuth } from './auth.js';
+import { startRetention } from './retention.js';
 import { loginPage, notFoundPage, projectPage, projectsPage, requestPage } from './views.js';
 
 const PORT = process.env.PORT || 3000;
@@ -173,6 +174,7 @@ app.use((err, _req, res, _next) => {
 });
 
 await migrate();
+startRetention();
 app.listen(PORT, () => {
   console.log(`Webhook Catcher listening on http://localhost:${PORT}`);
 });

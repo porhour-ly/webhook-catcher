@@ -157,6 +157,17 @@ export async function insertRequest(r) {
   );
 }
 
+// Retention (step 6): drop requests past the window. Interval is built from a bound param
+// rather than interpolated, and days is coerced to an integer by the caller. Returns the
+// number of rows removed — rowCount on node-postgres, affectedRows on PGlite.
+export async function deleteRequestsOlderThan(days) {
+  const result = await query(
+    `DELETE FROM requests WHERE received_at < now() - ($1 || ' days')::interval`,
+    [String(days)],
+  );
+  return result.rowCount ?? result.affectedRows ?? 0;
+}
+
 // Detail view (step 4). Scoped by project_id as well as id so a request can only be
 // reached through the project that owns it — no cross-project id guessing.
 export async function getRequest(projectId, id) {
