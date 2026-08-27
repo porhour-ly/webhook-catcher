@@ -168,7 +168,14 @@ function layout(title, body) {
   .danger:hover { background: color-mix(in srgb, #ef4444 12%, transparent); border-color: #ef4444; }
   @media (prefers-color-scheme: dark) { .danger { color: #fca5a5; } }
   .settings { margin: 0 0 1.25rem; }
-  .settings > summary { display: inline-flex; font-size: .8125rem; color: var(--muted); }
+  .settings > summary { display: inline-flex; align-items: center; gap: .4rem; width: fit-content;
+                        font-size: .8125rem; font-weight: 500; color: var(--text); cursor: pointer;
+                        padding: .45rem .75rem; border-radius: var(--radius-sm);
+                        border: 1px solid var(--border-strong); background: var(--surface);
+                        list-style: none; }
+  .settings > summary::-webkit-details-marker { display: none; }
+  .settings > summary:hover { background: var(--surface-2); border-color: var(--muted); }
+  .settings[open] > summary { margin-bottom: .25rem; }
   .settings-body { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center;
                    margin-top: .75rem; padding: 1rem; background: var(--surface);
                    border: 1px solid var(--border); border-radius: var(--radius); }
@@ -375,7 +382,7 @@ ${requests.length ? '' : emptyState}
 </div>
 <p class="sub">Send anything to <code>${escapeHtml(hookUrl)}</code> — any method, any body.</p>
 <details class="settings">
-  <summary>Project settings</summary>
+  <summary>⚙ Rename or delete project</summary>
   <div class="settings-body">
     <form class="rename" method="post" action="/projects/${encodeURIComponent(project.slug)}/rename">
       <input name="name" value="${escapeHtml(project.name)}" maxlength="120" autocomplete="off" required aria-label="Project name">
