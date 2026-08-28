@@ -132,6 +132,15 @@ function layout(title, body) {
   a.req:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
   a.req:active { transform: translateY(1px); }
   a.req pre { max-height: 20rem; overflow: auto; margin-top: .7rem; }
+  .note { margin-top: .6rem; padding: .5rem .7rem; font-size: .8125rem;
+          border-left: 3px solid color-mix(in srgb, var(--accent) 60%, transparent);
+          background: color-mix(in srgb, var(--accent) 8%, transparent);
+          border-radius: 0 6px 6px 0; white-space: pre-wrap; word-break: break-word; }
+  .note::before { content: "📝 "; }
+  .note-form { display: flex; flex-direction: column; gap: .5rem; align-items: start; margin-top: .5rem; }
+  .note-form textarea { width: 100%; font: inherit; padding: .55rem .7rem; border-radius: var(--radius-sm);
+          background: var(--surface); color: var(--text); border: 1px solid var(--border-strong);
+          resize: vertical; }
   .meta { display: flex; flex-wrap: wrap; gap: .55rem; align-items: center; }
   .time { color: var(--muted); font-size: .8125rem; font-variant-numeric: tabular-nums; }
   .ip { color: var(--muted); font-size: .8125rem; }
@@ -321,6 +330,7 @@ export function feedItem(project, r) {
     ? '<span class="copy" role="button" tabindex="0">Copy</span>'
     : '';
   const del = '<span class="del" role="button" tabindex="0">Delete</span>';
+  const note = r.note ? `<div class="note">${escapeHtml(r.note)}</div>` : '';
   return `<a class="req" data-id="${r.id}" href="/projects/${encodeURIComponent(project.slug)}/requests/${r.id}">
   <div class="meta">
     ${methodBadge(r.method)}
@@ -328,6 +338,7 @@ export function feedItem(project, r) {
     <span class="ip">from ${escapeHtml(r.source_ip)}</span>
     <span class="row-actions">${copy}${del}</span>
   </div>
+  ${note}
   ${preview(r.body_raw)}
 </a>`;
 }
@@ -464,6 +475,12 @@ export function requestPage({ project, request }) {
   · from ${escapeHtml(request.source_ip)}
   ${contentType ? `· <code>${escapeHtml(contentType)}</code>` : ''}
 </p>
+
+<div class="section-head"><h2>Remark</h2></div>
+<form class="note-form" method="post" action="/projects/${encodeURIComponent(project.slug)}/requests/${request.id}/note">
+  <textarea name="note" rows="2" maxlength="1000" placeholder="Add a note about this request…">${escapeHtml(request.note ?? '')}</textarea>
+  <button type="submit">Save remark</button>
+</form>
 
 <div class="section-head"><h2>Body</h2>${hasBody ? '<button type="button" class="copy" data-copy="#body">Copy</button>' : ''}</div>
 <div id="body">${bodyBlock(request)}</div>

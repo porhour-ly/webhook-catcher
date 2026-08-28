@@ -62,6 +62,10 @@ export async function migrate() {
     )
   `);
 
+  // Optional free-text remark on a request. Added after the table shipped, so ALTER (not part
+  // of CREATE) — IF NOT EXISTS makes it a no-op on databases that already have the column.
+  await query(`ALTER TABLE requests ADD COLUMN IF NOT EXISTS note TEXT`);
+
   // The feed is always "this project, newest first"; retention (step 6) sweeps by received_at.
   await query(`
     CREATE INDEX IF NOT EXISTS requests_project_received_idx
@@ -168,6 +172,18 @@ export async function deleteRequestsOlderThan(days) {
   return result.rowCount ?? result.affectedRows ?? 0;
 }
 
+// Save (or clear) the free-text remark on a request. Empty/whitespace clears it back to NULL.
+// Scoped by project_id so a note can only be set through the owning project.
+export async function setRequestNote(projectId, id, note) {
+  const trimmed = String(note ?? '').trim().slice(0, 1000);
+  const result = await query(`UPDATE requests SET note = $3 WHERE project_id = $1 AND id = $2`, [
+    projectId,
+    id,
+    trimmed === '' ? null : trimmed,
+  ]);
+  return (result.rowCount ?? result.affectedRows ?? 0) > 0;
+}
+
 // Scoped by project_id too, so a request can only be deleted through the project that owns it.
 export async function deleteRequest(projectId, id) {
   const result = await query(`DELETE FROM requests WHERE project_id = $1 AND id = $2`, [
@@ -198,7 +214,7 @@ export async function deleteProject(id) {
 // reached through the project that owns it — no cross-project id guessing.
 export async function getRequest(projectId, id) {
   const { rows } = await query(
-    `SELECT id, method, headers, query, body_raw, body_json, source_ip, received_at
+    `SELECT id, method, headers, query, body_raw, body_json, source_ip, received_at, note
        FROM requests
       WHERE project_id = $1 AND id = $2`,
     [projectId, id],
@@ -208,7 +224,7 @@ export async function getRequest(projectId, id) {
 
 export async function listRequests(projectId, limit = 100) {
   const { rows } = await query(
-    `SELECT id, method, body_raw, source_ip, received_at
+    `SELECT id, method, body_raw, source_ip, received_at, note
        FROM requests
       WHERE project_id = $1
       ORDER BY received_at DESC, id DESC
@@ -228,10 +244,10 @@ function bodyLike(term) {
 // when a JSON payload arrived minified with no whitespace in body_raw.
 export async function searchRequests(projectId, term, limit = 100) {
   const { rows } = await query(
-    `SELECT id, method, body_raw, source_ip, received_at
+    `SELECT id, method, body_raw, source_ip, received_at, note
        FROM requests
       WHERE project_id = $1
-        AND (body_raw ILIKE $2 OR body_json::text ILIKE $2)
+        AND (body_raw ILIKE $2 OR body_json::text ILIKE $2 OR note ILIKE $2)
       ORDER BY received_at DESC, id DESC
       LIMIT $3`,
     [projectId, bodyLike(term), limit],
@@ -250,7 +266,7 @@ export async function requestsSince(projectId, sinceId, term = null, limit = 100
   }
   params.push(limit);
   const { rows } = await query(
-    `SELECT id, method, body_raw, source_ip, received_at
+    `SELECT id, method, body_raw, source_ip, received_at, note
        FROM requests
       WHERE project_id = $1 AND id > $2 ${filter}
       ORDER BY received_at DESC, id DESC

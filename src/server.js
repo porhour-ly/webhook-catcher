@@ -13,6 +13,7 @@ import {
   renameProject,
   requestsSince,
   searchRequests,
+  setRequestNote,
 } from './db.js';
 import { attachAuthRoutes, readPassword, requireAuth } from './auth.js';
 import { startRetention } from './retention.js';
@@ -182,6 +183,21 @@ app.post('/projects/:slug/delete', async (req, res, next) => {
     }
     await deleteProject(project.id); // cascades to its requests
     res.redirect('/projects');
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post('/projects/:slug/requests/:id/note', async (req, res, next) => {
+  try {
+    const project = await findProjectBySlug(req.params.slug);
+    const id = Number(req.params.id);
+    if (!project || !Number.isInteger(id)) {
+      res.status(404).send(notFoundPage('Request not found.'));
+      return;
+    }
+    await setRequestNote(project.id, id, req.body?.note);
+    res.redirect(`/projects/${encodeURIComponent(project.slug)}/requests/${id}`);
   } catch (err) {
     next(err);
   }
